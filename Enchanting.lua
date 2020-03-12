@@ -11,19 +11,19 @@
 -- 
 -----------------------------------------------------------------------------------
 
-local LibLazyCrafting = _G["LibLazyCrafting"]
-local sortCraftQueue = LibLazyCrafting.sortCraftQueue
+local lib = _G["lib_global"]
+local sortCraftQueue = lib.sortCraftQueue
 
 local widgetType = 'enchanting'
 local widgetVersion = 1.7
-if not LibLazyCrafting:RegisterWidget(widgetType, widgetVersion) then return false end
+if not lib:RegisterWidget(widgetType, widgetVersion) then return false end
 
 local function dbug(...)
 	if not DolgubonGlobalDebugOutput then return end
 	DolgubonGlobalDebugOutput(...)
 end
 
-local craftingQueue = LibLazyCrafting.craftingQueue
+local craftingQueue = lib.craftingQueue
 
 --------------------------------------
 -- ENCHANTING HELPER FUNCTIONS
@@ -84,7 +84,7 @@ local function LLC_CraftEnchantingGlyphItemID(self, potencyItemID, essenceItemID
 
 	--sortCraftQueue()
 	if GetCraftingInteractionType()==CRAFTING_TYPE_ENCHANTING then 
-		LibLazyCrafting.craftInteract(event, CRAFTING_TYPE_ENCHANTING) 
+		lib.craftInteract(event, CRAFTING_TYPE_ENCHANTING) 
 	end
 	return requestTable
 end
@@ -105,7 +105,7 @@ local function LLC_AddGlyphToExistingGear(self, existingRequestTable, gearBag, g
 	end
 end
 
-LibLazyCrafting.functionTable.AddGlyphToExistingGear = LLC_AddGlyphToExistingGear
+lib.functionTable.AddGlyphToExistingGear = LLC_AddGlyphToExistingGear
 
 local validLevels = 
 {
@@ -224,8 +224,8 @@ local function closestGlyphLevel(isCP, level)
 		end
 	end
 end
-LibLazyCrafting.closestGlyphLevel = closestGlyphLevel
-LibLazyCrafting.getGlyphInfo = function () return glyphInfo, enchantLevelInfo,qualityItemIdInfo  end
+lib.closestGlyphLevel = closestGlyphLevel
+lib.getGlyphInfo = function () return glyphInfo, enchantLevelInfo,qualityItemIdInfo  end
 
 
 --[[
@@ -263,7 +263,7 @@ local function LLC_CraftEnchantingGlyphAttributes(self, isCP, level, enchantId, 
 	-- LLC_CraftEnchantingGlyphItemID(self, GetItemId(potencyBagId, potencySlot),GetItemId(essenceBagId, essenceSlot),GetItemId(aspectBagId,aspectSlot),autocraft, reference)
 end
 
-LibLazyCrafting.functionTable.CraftEnchantingGlyphByAttributes = LLC_CraftEnchantingGlyphAttributes
+lib.functionTable.CraftEnchantingGlyphByAttributes = LLC_CraftEnchantingGlyphAttributes
 
 local function LLC_EnchantAttributesToGlyphIds(isCP, level, enchantId, quality)
 	local _, parity, essenceId = getEnchantingResultItemId(enchantId)
@@ -279,8 +279,8 @@ local function LLC_EnchantAttributesToGlyphIds(isCP, level, enchantId, quality)
 	return potencyId, essenceId, aspectId
 end
 
-LibLazyCrafting.functionTable.EnchantAttributesToGlyphIds = LLC_EnchantAttributesToGlyphIds
-LibLazyCrafting.EnchantAttributesToGlyphIds = LLC_EnchantAttributesToGlyphIds
+lib.functionTable.EnchantAttributesToGlyphIds = LLC_EnchantAttributesToGlyphIds
+lib.EnchantAttributesToGlyphIds = LLC_EnchantAttributesToGlyphIds
 
 function LLC_GetEnchantingResultItemLinkByAttributes(isCP, level, enchantId, quality, autocraft, reference)
 	local itemId = getEnchantingResultItemId(enchantId)
@@ -309,7 +309,7 @@ local lastSlotUsed = nil
 
 local function LLC_EnchantingCraftinteraction(station, earliest, addon , position)
 	dbug("FUNCTION:LLCEnchantCraft")
-	if not earliest then  LibLazyCrafting.SendCraftEvent( LLC_NO_FURTHER_CRAFT_POSSIBLE,  station) end
+	if not earliest then  lib.SendCraftEvent( LLC_NO_FURTHER_CRAFT_POSSIBLE,  station) end
 	if earliest and not IsPerformingCraftProcess() then
 		local locations = 
 		{
@@ -323,10 +323,10 @@ local function LLC_EnchantingCraftinteraction(station, earliest, addon , positio
 		}
 		if locations[1]  and locations[3] and locations[5] then
 			dbug("CALL:ZOEnchantCraft")
-			LibLazyCrafting.isCurrentlyCrafting = {true, "enchanting", earliest["Requester"]}
+			lib.isCurrentlyCrafting = {true, "enchanting", earliest["Requester"]}
 			CraftEnchantingItem(unpack(locations))
 			currentCraftAttempt= copy(earliest)
-			currentCraftAttempt.callback = LibLazyCrafting.craftResultFunctions[addon]
+			currentCraftAttempt.callback = lib.craftResultFunctions[addon]
 			currentCraftAttempt.slot = FindFirstEmptySlotInBag(BAG_BACKPACK)
 			currentCraftAttempt.link = GetEnchantingResultingItemLink(unpack(locations))
 			currentCraftAttempt.position = position
@@ -385,14 +385,14 @@ local function applyGlyphToItem(requestTable)
 			d("LibLazyCrafting: Could not find crafted glyph")
 		end
 		d("LibLazyCrafting: Aborting enchanting")
-		LibLazyCrafting.SendCraftEvent(LLC_ENCHANTMENT_FAILED, 0, requestTable.Requester, requestTable )
+		lib.SendCraftEvent(LLC_ENCHANTMENT_FAILED, 0, requestTable.Requester, requestTable )
 		return
 	end
 	lastSlotUsed = glyphSlot
 	EnchantItem(equipBag, equipSlot, glyphBag , glyphSlot)
 	-- Set the new gear as new
 	_,equipSlot = searchUniqueId(requestTable.equipUniqueId)
-	zo_callLater( function() LibLazyCrafting:SetItemStatusNew(equipSlot) end, 500 )
+	zo_callLater( function() lib:SetItemStatusNew(equipSlot) end, 500 )
 	-- local resultTable = 
 	-- {
 	-- 	["bag"] = BAG_BACKPACK,
@@ -403,7 +403,7 @@ local function applyGlyphToItem(requestTable)
 	-- 	["reference"] = removedTable.reference,
 	-- }
 
-	LibLazyCrafting.SendCraftEvent(LLC_CRAFT_SUCCESS, 0, requestTable.Requester, requestTable )
+	lib.SendCraftEvent(LLC_CRAFT_SUCCESS, 0, requestTable.Requester, requestTable )
 	currentCraftAttempt = {}
 end
 
@@ -432,7 +432,7 @@ local function LLC_EnchantingCraftingComplete(event, station, lastCheck)
 				applyGlyphToItem(removedTable)
 				return
 			else
-				LibLazyCrafting.SendCraftEvent( LLC_INITIAL_CRAFT_SUCCESS,  station,removedTable.Requester, removedTable )
+				lib.SendCraftEvent( LLC_INITIAL_CRAFT_SUCCESS,  station,removedTable.Requester, removedTable )
 				return
 			end
 		end
@@ -446,7 +446,7 @@ local function LLC_EnchantingCraftingComplete(event, station, lastCheck)
 			["quantity"] = 1,
 			["reference"] = removedTable.reference,
 		}
-		LibLazyCrafting.SendCraftEvent( LLC_CRAFT_SUCCESS ,  station, removedTable.Requester , resultTable )
+		lib.SendCraftEvent( LLC_CRAFT_SUCCESS ,  station, removedTable.Requester , resultTable )
 		currentCraftAttempt = {}
 
 	elseif lastCheck then
@@ -468,7 +468,7 @@ local function LLC_EnchantingCraftingComplete(event, station, lastCheck)
 
 end
 
-LibLazyCrafting.applyGlyphToItem = applyGlyphToItem
+lib.applyGlyphToItem = applyGlyphToItem
 
 local function LLC_EnchantingEndInteraction(event ,station)
 
@@ -496,7 +496,7 @@ end
 local function compileGlyphRequirements(self, requestTable, requirements)
 	if not requirements then
 		if requestTable.dualEnchantingSmithing then
-			requirements = LibLazyCrafting.craftInteractionTables[requestTable.smithingStation]:materialRequirements( requestTable, {})
+			requirements = lib.craftInteractionTables[requestTable.smithingStation]:materialRequirements( requestTable, {})
 		else
 			requirements = {}
 		end
@@ -509,7 +509,7 @@ end
 
 
 
-LibLazyCrafting.craftInteractionTables[CRAFTING_TYPE_ENCHANTING] =
+lib.craftInteractionTables[CRAFTING_TYPE_ENCHANTING] =
 {
 	["station"] = CRAFTING_TYPE_ENCHANTING,
 	["check"] = function(self, station) return station == self.station end,
@@ -525,9 +525,9 @@ LibLazyCrafting.craftInteractionTables[CRAFTING_TYPE_ENCHANTING] =
 	["materialRequirements"] = compileGlyphRequirements,
 }
 
-LibLazyCrafting.functionTable.CraftEnchantingItemId = LLC_CraftEnchantingGlyphItemID
-LibLazyCrafting.functionTable.CraftEnchantingGlyph = LLC_CraftEnchantingGlyph
-LibLazyCrafting.functionTable.CraftEnchantingItem = LLC_CraftEnchantingGlyph
+lib.functionTable.CraftEnchantingItemId = LLC_CraftEnchantingGlyphItemID
+lib.functionTable.CraftEnchantingGlyph = LLC_CraftEnchantingGlyph
+lib.functionTable.CraftEnchantingItem = LLC_CraftEnchantingGlyph
 
 --- testers:
 -- /script LLC_Global:CraftEnchantingItemId(45830, 45838, 45851)

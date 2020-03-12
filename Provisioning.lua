@@ -15,19 +15,19 @@
 
 --Don't fail silently?
 
-local LibLazyCrafting = _G["LibLazyCrafting"]
-local sortCraftQueue = LibLazyCrafting.sortCraftQueue
+local lib = _G["lib_global"]
+local sortCraftQueue = lib.sortCraftQueue
 
 local widgetType = 'provisioning'
 local widgetVersion = 1.8
-if not LibLazyCrafting:RegisterWidget(widgetType, widgetVersion) then return false end
+if not lib:RegisterWidget(widgetType, widgetVersion) then return false end
 
 local function dbug(...)
     if not DolgubonGlobalDebugOutput then return end
     DolgubonGlobalDebugOutput(...)
 end
 
-local craftingQueue = LibLazyCrafting.craftingQueue
+local craftingQueue = lib.craftingQueue
 
 local function getItemLinkFromItemId(itemId) local name = GetItemLinkName(ZO_LinkHandler_CreateLink("Test Trash", nil, ITEM_LINK_TYPE,itemId, 1, 26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 10000, 0))
     return ZO_LinkHandler_CreateLink(zo_strformat("<<t:1>>",name), nil, ITEM_LINK_TYPE,itemId, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
@@ -60,7 +60,7 @@ local function LLC_CraftProvisioningItemByRecipeIndex(self, recipeListIndex, rec
 
     --sortCraftQueue()
     if GetCraftingInteractionType()==CRAFTING_TYPE_PROVISIONING then
-        LibLazyCrafting.craftInteract(event, CRAFTING_TYPE_PROVISIONING)
+        lib.craftInteract(event, CRAFTING_TYPE_PROVISIONING)
     end
 end
 
@@ -93,32 +93,32 @@ local function LLC_CraftProvisioningItemByRecipeId(self, recipeId, timesToMake, 
 
     --sortCraftQueue()
     if GetCraftingInteractionType()==CRAFTING_TYPE_PROVISIONING then
-        LibLazyCrafting.craftInteract(event, CRAFTING_TYPE_PROVISIONING)
+        lib.craftInteract(event, CRAFTING_TYPE_PROVISIONING)
     end
 end
 
 local function LLC_ProvisioningCraftInteraction(station, earliest, addon , position)
     dbug("FUNCTION:LLCProvisioningCraft")
-    if not earliest then LibLazyCrafting.SendCraftEvent( LLC_NO_FURTHER_CRAFT_POSSIBLE,  station) return end
+    if not earliest then lib.SendCraftEvent( LLC_NO_FURTHER_CRAFT_POSSIBLE,  station) return end
     if IsPerformingCraftProcess()  then return end
 
     dbug("CALL:ZOProvisioningCraft")
     local recipeArgs = { earliest.recipeListIndex, earliest.recipeIndex, 1}--earliest.timesToMake }
-    LibLazyCrafting.isCurrentlyCrafting = {true, "provisioning", earliest["Requester"]}
+    lib.isCurrentlyCrafting = {true, "provisioning", earliest["Requester"]}
     CraftProvisionerItem(unpack(recipeArgs))
 
-    currentCraftAttempt = LibLazyCrafting.tableShallowCopy(earliest)
-    currentCraftAttempt.callback = LibLazyCrafting.craftResultFunctions[addon]
+    currentCraftAttempt = lib.tableShallowCopy(earliest)
+    currentCraftAttempt.callback = lib.craftResultFunctions[addon]
     currentCraftAttempt.slot = nil
     currentCraftAttempt.link = GetRecipeResultItemLink(unpack(recipeArgs))
     currentCraftAttempt.position = position
     currentCraftAttempt.timestamp = GetTimeStamp()
     currentCraftAttempt.addon = addon
-    currentCraftAttempt.prevSlots = LibLazyCrafting.backpackInventory()
+    currentCraftAttempt.prevSlots = lib.backpackInventory()
 end
 
 local function LLC_ProvisioningCraftingComplete(event, station, lastCheck)
-    LibLazyCrafting.stackableCraftingComplete(event, station, lastCheck, CRAFTING_TYPE_PROVISIONING, currentCraftAttempt)
+    lib.stackableCraftingComplete(event, station, lastCheck, CRAFTING_TYPE_PROVISIONING, currentCraftAttempt)
 end
 
 local function LLC_ProvisioningIsItemCraftable(self, station, request)
@@ -143,10 +143,10 @@ local function LLC_ProvisioningIsItemCraftable(self, station, request)
             table.insert(materialList, mat)
         end
     end
-    return LibLazyCrafting.HaveMaterials(materialList)
+    return lib.HaveMaterials(materialList)
 end
 
-LibLazyCrafting.craftInteractionTables[CRAFTING_TYPE_PROVISIONING] =
+lib.craftInteractionTables[CRAFTING_TYPE_PROVISIONING] =
 {
     ["station"] = CRAFTING_TYPE_PROVISIONING,
     ["check"] = function(self, station) return station == self.station end,
@@ -157,5 +157,5 @@ LibLazyCrafting.craftInteractionTables[CRAFTING_TYPE_PROVISIONING] =
 
 }
 
-LibLazyCrafting.functionTable.CraftProvisioningItemByRecipeId = LLC_CraftProvisioningItemByRecipeId
-LibLazyCrafting.functionTable.CraftProvisioningItemByRecipeIndex = LLC_CraftProvisioningItemByRecipeIndex
+lib.functionTable.CraftProvisioningItemByRecipeId = LLC_CraftProvisioningItemByRecipeId
+lib.functionTable.CraftProvisioningItemByRecipeIndex = LLC_CraftProvisioningItemByRecipeIndex
