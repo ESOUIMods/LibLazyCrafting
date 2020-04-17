@@ -1304,6 +1304,9 @@ local function createSetItemIdTable(setId)
 	end
 
 	local IdSource = LibLazyCraftingSavedVars.SetIds[setId]
+	if not IdSource then
+		return
+	end
 	local start = IdSource[1]
 	local start = 0
 	local workingTable = {}

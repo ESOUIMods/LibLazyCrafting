@@ -16,7 +16,7 @@ local function dbug(...)
 end
 
 -- Initialize libraries
-local libName, libVersion = "LibLazyCrafting", 2994
+local libName, libVersion = "LibLazyCrafting", 2995
 local libLoaded
 local lib, oldminor
 if(not LibStub) then
@@ -698,8 +698,8 @@ local function CraftComplete(event, station)
 
 				endInteraction(EVENT_END_CRAFTING_STATION_INTERACT, station)
 				zo_callLater(function() v["complete"]( station) lib.isCurrentlyCrafting = {false, "", ""} end, timetest)
+				return
 			else
-
 				v["complete"]( station)
 				lib.isCurrentlyCrafting = {false, "", ""}
 				local earliest, addon , position = lib.findEarliestRequest(station)
@@ -707,15 +707,17 @@ local function CraftComplete(event, station)
 					if earliest.isFurniture then
 						if v.canCraftFurniture then
 							v["function"]( station, earliest, addon , position)
+							return
 						end
 					else
 						v["function"]( station, earliest, addon , position)
-						break
+						return
 					end
 				end
 			end
 		end
 	end
+	lib.SendCraftEvent( LLC_NO_FURTHER_CRAFT_POSSIBLE ,  station,addon , nil )
 end
 
 
