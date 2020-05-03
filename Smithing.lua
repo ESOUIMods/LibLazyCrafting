@@ -18,7 +18,7 @@
 local lib = _G["lib_global"]
 
 local widgetType = 'smithing'
-local widgetVersion = 2.94
+local widgetVersion = 2.95
 if not lib:RegisterWidget(widgetType, widgetVersion) then return  end
 
 local LLC_SHORT = lib
@@ -647,7 +647,7 @@ local function LLC_CraftSmithingItem(self, patternIndex, materialIndex, material
 	requestTable["autocraft"] = autocraft
 	requestTable["Requester"] = self.addonName
 	requestTable["reference"] = reference
-	requestTable["smithingQuantity"] = smithingQuantity
+	requestTable["smithingQuantity"] = smithingQuantity or 1
 	requestTable["initialQuantity"] = quantity
 	if setIndex == 470 and station == CRAFTING_TYPE_JEWELRYCRAFTING then -- New Moon Acolyte pattern indexes are swapped for jewelry!
 		if requestTable.pattern == 1 then
