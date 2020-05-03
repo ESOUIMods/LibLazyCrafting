@@ -69,6 +69,12 @@ function lib:RegisterWidget(widgetType, widgetVersion)
 	end
 end
 
+local queuePosition = 0
+function lib.GetNextQueueOrder()
+	queuePosition = queuePosition + 1
+	return queuePosition
+end
+
 -- -- Re initialize crafts if this run of the library overwrote a previous one.
 -- if oldVersion then
 -- 	for k, reInitialize in pairs(LLC_SHORT.widgets.initializers) do
@@ -311,6 +317,40 @@ function lib.stackableCraftingComplete(event, station, lastCheck, craftingType, 
 	end
 end
 
+lib.newItemsSeen = 
+{
+
+}
+
+function lib:setWatchingForNewItems(state)
+	self.watchForNewItems = state
+	lib.newItemsSeen = {}
+end
+
+function lib.findNextSlotIndex(itemCheck, startSlot)
+	if startSlot == nil then
+		startSlot = -1
+	end
+	for k, item in pairs(lib.newItemsSeen) do
+		if item.slotId>=startSlot and itemCheck(item.bagId, item.slotId) then
+			table.remove(lib.newItemsSeen , k)
+			return item.bagId, item.slotId
+		end
+	end
+	return nil , nil
+end
+
+local function newItemWatcher(event, bagId, slotId, isNew, _, inventoryUpdateReason, countChange)
+	dbug("New item "..GetItemLink(bagId, slotId).." at bagId "..bagId.." and slotId "..slotId)
+	if lib.watchForNewItems and isNew then
+		table.insert(lib.newItemsSeen, {bagId=bagId, slotId=slotId,countChange=countChange})
+	end
+end
+
+
+EVENT_MANAGER:RegisterForEvent(lib.name.."NewItemWatcher", EVENT_INVENTORY_SINGLE_SLOT_UPDATE, newItemWatcher)
+EVENT_MANAGER:AddFilterForEvent(lib.name.."NewItemWatcher", EVENT_INVENTORY_SINGLE_SLOT_UPDATE, REGISTER_FILTER_IS_NEW_ITEM, true)
+
 local function getItemLinkFromItemId(itemId) local name = GetItemLinkName(ZO_LinkHandler_CreateLink("Test Trash", nil, ITEM_LINK_TYPE,itemId, 1, 26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 10000, 0))
     return ZO_LinkHandler_CreateLink(zo_strformat("<<t:1>>",name), nil, ITEM_LINK_TYPE,itemId, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 end
@@ -356,12 +396,9 @@ local function findEarliestRequest(station)
 	local earliest = {["timestamp"] = GetTimeStamp() + 100000} -- should be later than anything else, as it's 'in the future'
 	local addonName = nil
 	local position = 0
-
 	for addon, requestTable in pairs(craftingQueue) do
 
 		for i = 1, #requestTable[station] do
-
-
 			if isItemCraftable(requestTable[station][i],station)  and (requestTable[station][i]["autocraft"] or requestTable[station][i]["craftNow"]) then
 
 				if requestTable[station][i]["timestamp"] < earliest["timestamp"] then
@@ -498,6 +535,9 @@ local function LLC_GetMatRequirements(self, requestTable)
 	if requestTable.station then
 		return lib.craftInteractionTables[requestTable.station]:materialRequirements( requestTable)
 	end
+	if requestTable.dualEnchantingSmithing then
+		return lib.craftInteractionTables[CRAFTING_TYPE_ENCHANTING]:materialRequirements( requestTable)
+	end
 end
 
 lib.functionTable.getMatRequirements =  LLC_GetMatRequirements
@@ -516,7 +556,6 @@ function lib.SendCraftEvent( event,  station, requester, returnTable )
 	-- 		SHARED_INVENTORY:RefreshStatusSortOrder(v)
 	-- 	end
 	-- end
-
 	if event == LLC_NO_FURTHER_CRAFT_POSSIBLE then
 		for requester, callbackFunction in pairs(lib.craftResultFunctions) do
 			if requester ~= "LLC_Global" then
@@ -549,7 +588,7 @@ function lib:Init()
 	-- nilable:boolean autocraft will cause the library to automatically craft anything in the queue when at a crafting station.
 	-- If optionalDebugAuthor is set, then when the @name == GetDisplayName(), the library will throw errors when some invalid arguments are entered for functions
 	-- Example: If an invalid level is entered for a piece of equipment, will throw and error "LLC: Invalid level"
-	function lib:AddRequestingAddon(addonName, autocraft, functionCallback, optionalDebugAuthor)
+	function lib:AddRequestingAddon(addonName, autocraft, functionCallback, optionalDebugAuthor, styleTable)
 		-- Add the 'open functions' here.
 		local LLCAddonInteractionTable = {}
 		if lib.addonInteractionTables[addonName] then
@@ -562,6 +601,7 @@ function lib:Init()
 		-- The crafting queue is added. Consider hiding this.
 
 		LLCAddonInteractionTable["personalQueue"]  = craftingQueue[addonName]
+		LLCAddonInteractionTable["styleTable"] = styleTable
 
 		LLC_SHORT.debugDisplayNames[addonName] = optionalDebugAuthor
 
@@ -616,7 +656,9 @@ end
 
 function lib:SetItemStatusNew(itemSlot)
 	-- d(itemSlot)
-	local v = PLAYER_INVENTORY.inventories[1].slots[1] [itemSlot]
+	-- PLAYER_INVENTORY:RefreshInventorySlot(1, itemSlot, BAG_BACKPACK)
+	local v = PLAYER_INVENTORY:GetBackpackItem(itemSlot)
+	
 	if v then
 		v.brandNew = true
 		v.age = 1
@@ -680,6 +722,7 @@ local function endInteraction(event, station)
 		end
 	end
 	LLC_StopCraftAllItems()
+	lib:setWatchingForNewItems(false)
 end
 
 -- Called when a crafting request is done.

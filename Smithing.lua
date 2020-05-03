@@ -18,7 +18,7 @@
 local lib = _G["lib_global"]
 
 local widgetType = 'smithing'
-local widgetVersion = 2.93
+local widgetVersion = 2.94
 if not lib:RegisterWidget(widgetType, widgetVersion) then return  end
 
 local LLC_SHORT = lib
@@ -86,13 +86,6 @@ local function copy(t)
 		a[k] = v
 	end
 	return a
-end
-
--- increments queue position and returns it, guarenteeing a unique order
-local queuePosition = 0
-local function GetSmithingQueueOrder()
-	queuePosition = queuePosition + 1
-	return queuePosition
 end
 
 -- Returns an item link from the given itemId.
@@ -194,6 +187,71 @@ for i = 1, 41 do
 end
 
 
+
+local function maxStyle (craftRequestTable) -- Searches to find the style that the user has the most style stones for. Only searches basic styles. User must know style
+ 	local piece = craftRequestTable.pattern
+ 	local styleTable
+ 	if type(lib.addonInteractionTables[craftRequestTable.Requester]["styleTable"])=="table" then
+ 		styleTable = lib.addonInteractionTables[craftRequestTable.Requester]["styleTable"]
+ 	elseif type(lib.addonInteractionTables[craftRequestTable.Requester]["styleTable"]) == "function" then
+ 		styleTable = lib.addonInteractionTables[craftRequestTable.Requester]["styleTable"]()
+ 	end
+    local bagId = BAG_BACKPACK
+    SHARED_INVENTORY:RefreshInventory(bagId)
+    local bagCache = SHARED_INVENTORY:GetOrCreateBagCache(bagId)
+ 
+    local max = -1
+    local numKnown = 0
+    local numAllowed = 0
+    local maxStack = -1
+    local useStolen = AreAnyItemsStolen(BAG_BACKPACK) and false
+    for i, v in pairs(styleTable) do
+        if v then
+            numAllowed = numAllowed + 1
+	        
+	        if IsSmithingStyleKnown(i, piece) then
+	            numKnown = numKnown + 1
+	 
+	            for key, itemInfo in pairs(bagCache) do
+	                local slotId = itemInfo.slotIndex
+	                if itemInfo.stolen == true then
+	                    local itemType, specialType = GetItemType(bagId, slotId)
+	                    if itemType == ITEMTYPE_STYLE_MATERIAL then
+	                        local icon, stack, sellPrice, meetsUsageRequirement, locked, equipType, itemStyleId, quality = GetItemInfo(bagId, slotId)
+	                        if itemStyleId == i then
+	                            if stack > maxStack then
+	                                maxStack = stack
+	                                max = itemStyleId
+	                                useStolen = true
+	                            end
+	                        end
+	                    end
+	                end
+	            end
+	 
+	            if useStolen == false then
+	                if GetCurrentSmithingStyleItemCount(i)>GetCurrentSmithingStyleItemCount(max) then
+	                    if GetCurrentSmithingStyleItemCount(i)>0 and v then
+	                        max = i
+	                    end
+	                end
+	            end
+	        end
+        end
+    end
+    if max == -1 then
+        if numKnown <3 then
+            return -2
+        end
+        if numAllowed < 3 then
+            return -3
+        end
+    end
+    return max
+end
+
+
+
 function enoughMaterials(craftRequestTable)
 
 	local missing =
@@ -201,25 +259,30 @@ function enoughMaterials(craftRequestTable)
 		["materials"] = {},
 	}
 	local missingSomething = false
-	local quantity = 1
-	if craftRequestTable.overrideNonMulticraft then
-		quantity = craftRequestTable.quantity
-	end
-	if craftRequestTable["style"] and GetCurrentSmithingStyleItemCount(craftRequestTable["style"]) < 1*quantity
+	local smithingQuantity = 1
+	smithingQuantity = craftRequestTable.smithingQuantity
+	if craftRequestTable["style"] 
 		and craftRequestTable['station']~= CRAFTING_TYPE_JEWELRYCRAFTING and not craftRequestTable["useUniversalStyleItem"] then
-		missing.materials["style"] = true
-		missingSomething = true
+		if craftRequestTable["style"]==LLC_FREE_STYLE_CHOICE then
+			if maxStyle(craftRequestTable) <0 then
+				missing.materials["style"] = true
+				missingSomething = true
+			end
+		elseif GetCurrentSmithingStyleItemCount(craftRequestTable["style"]) < 1*smithingQuantity then
+			missing.materials["style"] = true
+			missingSomething = true
+		end
 	end
 
 	-- Check trait mats
-	if not(GetCurrentSmithingTraitItemCount(craftRequestTable["trait"])>=1*quantity or craftRequestTable["trait"]==1) then
+	if not(GetCurrentSmithingTraitItemCount(craftRequestTable["trait"])>=1*smithingQuantity or craftRequestTable["trait"]==1) then
 		if craftRequestTable["trait"]==0 then d("Invalid trait") end
 		missing.materials["trait"] = true
 		missingSomething = true
 	end
 
 	-- Check wood/ingot/cloth mats
-	if not(GetCurrentSmithingMaterialItemCount(craftRequestTable["pattern"],craftRequestTable["materialIndex"])>=craftRequestTable["materialQuantity"]*quantity) then
+	if not(GetCurrentSmithingMaterialItemCount(craftRequestTable["pattern"],craftRequestTable["materialIndex"])>=craftRequestTable["materialQuantity"]*smithingQuantity) then
 		missing.materials["mats"]  = true
 		missingSomething = true
 	end
@@ -334,7 +397,7 @@ local function canCraftItem(craftRequestTable)
 			-- Check if the specific trait is known
 			if IsSmithingTraitKnownForResult(craftRequestTable["pattern"], craftRequestTable["materialIndex"], craftRequestTable["materialQuantity"],craftRequestTable["style"], craftRequestTable["trait"]) then
 				-- Check if the style is known for that piece
-				if (craftRequestTable["station"] == CRAFTING_TYPE_JEWELRYCRAFTING) or IsSmithingStyleKnown(craftRequestTable["style"], craftRequestTable["pattern"]) then
+				if (craftRequestTable["station"] == CRAFTING_TYPE_JEWELRYCRAFTING) or craftRequestTable["style"]==LLC_FREE_STYLE_CHOICE or IsSmithingStyleKnown(craftRequestTable["style"], craftRequestTable["pattern"]) then
 					return true
 				else
 
@@ -518,7 +581,8 @@ end
 -- The number it returns is the enchant Id!
 
 -- /script local c = 0 for i = 1, 1000 do local a = GetEnchantSearchCategoryType( i ) if a~=0 then d("i: "..i.." search: ".. a) c = c+1 end end d(c)
-local function LLC_CraftSmithingItem(self, patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex, useUniversalStyleItem, stationOverride, setIndex, quality, autocraft, reference, potencyId, essenceId, aspectId, quantity, overrideNonMulticraft)
+LLC_FREE_STYLE_CHOICE = "free style choice"
+local function LLC_CraftSmithingItem(self, patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex, useUniversalStyleItem, stationOverride, setIndex, quality, autocraft, reference, potencyId, essenceId, aspectId, smithingQuantity)
 	dbug("FUNCTION:LLCSmithing")
 
 	if reference == nil then reference = "" end
@@ -527,6 +591,10 @@ local function LLC_CraftSmithingItem(self, patternIndex, materialIndex, material
 	local station
 	if type(self) == "number" then
 		d("LLC: Please call using colon notation: e.g LLC:CraftSmithingItem(). If you are seeing this and you are not a developer please contact the author of the addon")
+	end
+	if styleIndex == LLC_FREE_STYLE_CHOICE and not self.styleTable then
+		error("You must specify a style table to use this option when you add your addon to the library")
+
 	end
 
 	local validStations =
@@ -556,6 +624,8 @@ local function LLC_CraftSmithingItem(self, patternIndex, materialIndex, material
 	if potencyId and essenceId and aspectId then
 		requestTable = lib.functionTable.CraftEnchantingItemId(self,potencyId, essenceId, aspectId, autocraft, reference )
 		requestTable['dualEnchantingSmithing'] = true
+		requestTable['equipInfo'] = requestTable['equipInfo'] or {}
+		requestTable['glyphInfo'] = requestTable['glyphInfo'] or {}
 	elseif potencyId or essenceId or aspectId then
 		d("Only partial enchanting traits specified. Aborting craft")
 		return
@@ -573,13 +643,13 @@ local function LLC_CraftSmithingItem(self, patternIndex, materialIndex, material
 	requestTable["setIndex"] = setIndex
 	requestTable["quality"] = quality
 	requestTable["useUniversalStyleItem"] = useUniversalStyleItem
-	requestTable["timestamp"] = GetSmithingQueueOrder()
+	requestTable["timestamp"] = lib.GetNextQueueOrder()
 	requestTable["autocraft"] = autocraft
 	requestTable["Requester"] = self.addonName
 	requestTable["reference"] = reference
-	requestTable["overrideNonMulticraft"] = overrideNonMulticraft
-	requestTable["quantity"] = quantity
-	if setIndex == 470 and station == CRAFTING_TYPE_JEWELRYCRAFTING then
+	requestTable["smithingQuantity"] = smithingQuantity
+	requestTable["initialQuantity"] = quantity
+	if setIndex == 470 and station == CRAFTING_TYPE_JEWELRYCRAFTING then -- New Moon Acolyte pattern indexes are swapped for jewelry!
 		if requestTable.pattern == 1 then
 			requestTable.pattern = 2
 		else
@@ -612,14 +682,14 @@ end
 lib.functionTable.isSmithingLevelValid = isValidLevel
 
 local function LLC_CraftSmithingItemByLevel(self, patternIndex, isCP , level, styleIndex, traitIndex, 
-	useUniversalStyleItem, stationOverride, setIndex, quality, autocraft, reference, potencyId, essenceId, aspectId, quantity, overrideNonMulticraft)
+	useUniversalStyleItem, stationOverride, setIndex, quality, autocraft, reference, potencyId, essenceId, aspectId, smithingQuantity)
 
 	if isValidLevel( isCP ,level) then
 		local materialIndex = findMatIndex(level, isCP)
 
 		local materialQuantity = GetMatRequirements(patternIndex, materialIndex, stationOverride)
 
-		return LLC_CraftSmithingItem(self, patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex, useUniversalStyleItem, stationOverride, setIndex, quality, autocraft, reference, potencyId, essenceId, aspectId, quantity, overrideNonMulticraft)
+		return LLC_CraftSmithingItem(self, patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex, useUniversalStyleItem, stationOverride, setIndex, quality, autocraft, reference, potencyId, essenceId, aspectId, smithingQuantity)
 	else
 	end
 end
@@ -629,7 +699,7 @@ end
 lib.functionTable.CraftSmithingItem = LLC_CraftSmithingItem
 lib.functionTable.CraftSmithingItemByLevel = LLC_CraftSmithingItemByLevel
 -- /script local a = {1, 16, 36} for i = 1, 3 do LLC_Global:CraftSmithingItemByLevel(5, false, a[i],3 ,ITEM_TRAIT_TYPE_ARMOR_TRAINING ,false, CRAFTING_TYPE_CLOTHIER, 0, ITEM_QUALITY_ARCANE,true) end
--- /script LLC_Global:CraftSmithingItemByLevel(3, true, 150,3 ,1 ,false, CRAFTING_TYPE_CLOTHIER, 0, 2,true, nil, 45812, 45833, 45851)
+-- /script LLC_Global:CraftSmithingItemByLevel(3, false, 4,3 ,1 ,false, CRAFTING_TYPE_CLOTHIER, 0, 2,true, nil, nil, nil,nil, 2)
 -- /script for i= 2, 25 do LLC_Global:CraftSmithingItemByLevel(3, false, i*2,3 ,1 ,false, CRAFTING_TYPE_CLOTHIER, 0, 3,true) end
 -- /script LLC_Global:CraftSmithingItemByLevel(3, true, 140,3 ,1 ,false, CRAFTING_TYPE_CLOTHIER, 0, 5,true)
 
@@ -649,11 +719,11 @@ local function InternalImproveSmithingItem(self, BagIndex, SlotIndex, newQuality
 	if autocraft==nil then autocraft = self.autocraft end
 	local station = GetRearchLineInfoFromRetraitItem(BagIndex, SlotIndex)
 	local craftingRequestTable
-	if existingRequestTable then
-		craftingRequestTable = existingRequestTable
-	else
+	-- if existingRequestTable then
+	-- 	craftingRequestTable = existingRequestTable
+	-- else
 		craftingRequestTable = {}
-	end
+	-- end
 
 	craftingRequestTable["type"] = "improvement"
 	craftingRequestTable["Requester"] = self.addonName -- ADDON NAME
@@ -667,7 +737,17 @@ local function InternalImproveSmithingItem(self, BagIndex, SlotIndex, newQuality
 	craftingRequestTable["quality"] = newQuality
 	craftingRequestTable["reference"] = reference
 	craftingRequestTable["station"] = station
-	craftingRequestTable["timestamp"] = GetSmithingQueueOrder()
+	craftingRequestTable["timestamp"] = lib.GetNextQueueOrder()
+	craftingRequestTable["smithingQuantity"] = 1
+	if existingRequestTable then
+		craftingRequestTable.dualEnchantingSmithing = existingRequestTable.dualEnchantingSmithing
+		craftingRequestTable["equipInfo"] = existingRequestTable["equipInfo"] or {}
+		craftingRequestTable["glyphInfo"] = existingRequestTable["glyphInfo"] or {}
+		craftingRequestTable.potencyItemID = existingRequestTable.potencyItemID
+		craftingRequestTable.essenceItemID = existingRequestTable.essenceItemID
+		craftingRequestTable.aspectItemID = existingRequestTable.aspectItemID
+		craftingRequestTable.quantity = existingRequestTable.quantity
+	end
 
 	table.insert(craftingQueue[self.addonName][station], craftingRequestTable)
 	--sortCraftQueue()
@@ -730,47 +810,49 @@ local hasNewItemBeenMade = false
 local function LLC_SmithingCraftInteraction( station, earliest, addon , position)
 
 	dbug("EVENT:CraftIntBegin")
-
 	--abc = abc + 1 if abc>50 then d("raft")return end
 
 	local earliest, addon , position = lib.findEarliestRequest(station)
 
-	if earliest  and not IsPerformingCraftProcess() then
+	if earliest and not IsPerformingCraftProcess() then
 		if earliest.type =="smithing" then
 
 			local parameters = {
-			earliest.pattern,
-			earliest.materialIndex,
-			earliest.materialQuantity,
-			earliest.style,
-			earliest.trait,
-			earliest.useUniversalStyleItem,
-			1,
-		}
-		if earliest.overrideNonMulticraft then
-			parameters[7] = earliest.quantity
-		end
-		local setPatternOffset = {14, 15,[6]=6,[7]=2}
-		if earliest.setIndex~=INDEX_NO_SET then
-			parameters[1] = parameters[1] + setPatternOffset[station]
-		end
-			dbug("CALL:ZOCraftSmithing")
+				earliest.pattern,
+				earliest.materialIndex,
+				earliest.materialQuantity,
+				earliest.style,
+				earliest.trait,
+				earliest.useUniversalStyleItem,
+				1,
+			}
+			if earliest.style == LLC_FREE_STYLE_CHOICE then
+				parameters[4] = maxStyle(earliest)
+			end
 
-			lib.isCurrentlyCrafting = {true, "smithing", earliest["Requester"]}
+			parameters[7] = math.min(earliest.smithingQuantity or 1,  GetMaxIterationsPossibleForSmithingItem(unpack(parameters)))
 
-			hasNewItemBeenMade = false
-			
-			CraftSmithingItem(unpack(parameters))
+			local setPatternOffset = {14, 15,[6]=6,[7]=2}
+			if earliest.setIndex~=INDEX_NO_SET then
+				parameters[1] = parameters[1] + setPatternOffset[station]
+			end
+				dbug("CALL:ZOCraftSmithing")
 
-			currentCraftAttempt = copy(earliest)
-			currentCraftAttempt.position = position
-			currentCraftAttempt.callback = lib.craftResultFunctions[addon]
-			currentCraftAttempt.slot = FindFirstEmptySlotInBag(BAG_BACKPACK)
+				lib.isCurrentlyCrafting = {true, "smithing", earliest["Requester"]}
+				lib:setWatchingForNewItems (true)
 
-			parameters[6] = LINK_STYLE_DEFAULT
+				hasNewItemBeenMade = false
+				CraftSmithingItem(unpack(parameters))
 
-			currentCraftAttempt.link = GetSmithingPatternResultLink(unpack(parameters))
-			--d("Making reference #"..tostring(currentCraftAttempt.reference).." link: "..currentCraftAttempt.link)
+				currentCraftAttempt = copy(earliest)
+				currentCraftAttempt.position = position
+				currentCraftAttempt.callback = lib.craftResultFunctions[addon]
+				currentCraftAttempt.slot = FindFirstEmptySlotInBag(BAG_BACKPACK)
+
+				parameters[6] = LINK_STYLE_DEFAULT
+
+				currentCraftAttempt.link = GetSmithingPatternResultLink(unpack(parameters))
+				--d("Making reference #"..tostring(currentCraftAttempt.reference).." link: "..currentCraftAttempt.link)
 		elseif earliest.type =="improvement" then
 			local parameters = {}
 			local currentSkill, maxSkill = getImprovementLevel(station)
@@ -824,10 +906,10 @@ local function LLC_SmithingCraftInteraction( station, earliest, addon , position
 end
 -- check ItemID and style
 
-local function WasItemCrafted()
+local function WasItemCrafted(bag, slot)
 	dbug("CHECK:WasItemCrafted")
 	--abc = abc + 1 if abc>50 then d("wascrafted")return end
-	local checkPosition = {BAG_BACKPACK, currentCraftAttempt.slot}
+	local checkPosition = {BAG_BACKPACK, slot}
 	if GetItemName(unpack(checkPosition))==GetItemLinkName(currentCraftAttempt.link) then
 		if GetItemLinkQuality(GetItemLink(unpack(checkPosition))) ==ITEM_QUALITY_NORMAL then
 			if GetItemRequiredLevel(unpack(checkPosition))== GetItemLinkRequiredLevel(currentCraftAttempt.link) then
@@ -874,57 +956,76 @@ local function removedRequest(station, timestamp)
 	return nil, 0
 end
 
-local function smithingCompleteNewItemHandler(station)
+local function smithingCompleteNewItemHandler(station, bag, slot)
 
 	dbug("ACTION:RemoveRequest")
-
-	--d("Item found")
 	local addonName, position = removedRequest(station, currentCraftAttempt.timestamp)
 	local removedRequest
 	if addonName then
-		removedRequest =  table.remove(craftingQueue[addonName][station],position )
+		if (currentCraftAttempt.smithingQuantity or 1) <= 1 then
+			removedRequest =  table.remove(craftingQueue[addonName][station],position)
+			removedRequest.smithingQuantity = removedRequest.smithingQuantity - 1
+			currentCraftAttempt.smithingQuantity = currentCraftAttempt.smithingQuantity - 1
+		else
+			removedRequest =  craftingQueue[addonName][station][position]
+			removedRequest.smithingQuantity = removedRequest.smithingQuantity - 1
+			currentCraftAttempt.smithingQuantity = currentCraftAttempt.smithingQuantity - 1
+		end
 		if currentCraftAttempt.quality>1 then
 			--d("Improving #".. tostring(currentCraftAttempt.reference))
-			removedRequest.bag = BAG_BACKPACK
-			removedRequest.slot = currentCraftAttempt.slot
-
-			
 
 			if removedRequest.dualEnchantingSmithing then
-				InternalImproveSmithingItem({["addonName"]=currentCraftAttempt.Requester}, BAG_BACKPACK, currentCraftAttempt.slot, currentCraftAttempt.quality, 
+				table.insert(removedRequest.equipInfo,
+				{
+					bag=BAG_BACKPACK,
+					slot=slot,
+					uniqueId=GetItemUniqueId(BAG_BACKPACK, slot),
+					uniqueIdString = Id64ToString(GetItemUniqueId(BAG_BACKPACK, slot)),
+				})
+				InternalImproveSmithingItem({["addonName"]=currentCraftAttempt.Requester}, BAG_BACKPACK, slot, currentCraftAttempt.quality, 
 					currentCraftAttempt.autocraft, currentCraftAttempt.reference, removedRequest)
 				removedRequest["craftNow"] = true
 				lib.SendCraftEvent(LLC_INITIAL_CRAFT_SUCCESS, station, currentCraftAttempt.Requester, removedRequest)
 				return
 			end
 
-			local requestTable = LLC_ImproveSmithingItem({["addonName"]=currentCraftAttempt.Requester}, BAG_BACKPACK, currentCraftAttempt.slot, currentCraftAttempt.quality, currentCraftAttempt.autocraft, currentCraftAttempt.reference)
+			local requestTable = LLC_ImproveSmithingItem({["addonName"]=currentCraftAttempt.Requester}, BAG_BACKPACK, slot, currentCraftAttempt.quality, currentCraftAttempt.autocraft, currentCraftAttempt.reference)
 			removedRequest["craftNow"] = true
-			lib.SendCraftEvent(LLC_INITIAL_CRAFT_SUCCESS, station, currentCraftAttempt.Requester, removedRequest)
+			local copiedTable = lib.tableShallowCopy(removedRequest)
+			copiedTable.slot = slot
+			copiedTable.smithingQuantity = 1
+			lib.SendCraftEvent(LLC_INITIAL_CRAFT_SUCCESS, station, currentCraftAttempt.Requester, copiedTable)
 		else
 			removedRequest.bag = BAG_BACKPACK
-			removedRequest.slot = currentCraftAttempt.slot
+			removedRequest.slot = slot
 			if removedRequest.dualEnchantingSmithing then
-				removedRequest.equipBag = BAG_BACKPACK
-				removedRequest.equipSlot = currentCraftAttempt.slot
-
-				removedRequest['equipUniqueId'] = GetItemUniqueId(removedRequest.equipBag,removedRequest.equipSlot)
-				removedRequest['equipStringUniqueId'] = Id64ToString(removedRequest['equipUniqueId'])
+				table.insert(removedRequest.equipInfo,
+				{
+					bag=BAG_BACKPACK,
+					slot=slot,
+					uniqueId=GetItemUniqueId(BAG_BACKPACK, slot),
+					uniqueIdString = Id64ToString(GetItemUniqueId(BAG_BACKPACK, slot)),
+				})
 				removedRequest.equipCreated = true
-				currentCraftAttempt = {}
-				if removedRequest.glyphCreated then
+				if removedRequest.glyphInfo and #removedRequest.glyphInfo>0 then
 					lib.applyGlyphToItem(removedRequest)
+					return
 				else
-					lib.SendCraftEvent( LLC_INITIAL_CRAFT_SUCCESS,  station,removedRequest.Requester, removedRequest )
+					local copiedTable = lib.tableShallowCopy(removedRequest)
+					copiedTable.slot = slot
+					copiedTable.smithingQuantity = 1
+					lib.SendCraftEvent( LLC_INITIAL_CRAFT_SUCCESS,  station,removedRequest.Requester, copiedTable )
 					return
 				end
 			end
-			lib.SendCraftEvent(LLC_CRAFT_SUCCESS, station, removedRequest.Requester, removedRequest )
+			local copiedTable = lib.tableShallowCopy(removedRequest)
+			copiedTable.slot = slot
+			copiedTable.smithingQuantity = 1
+			lib.SendCraftEvent(LLC_CRAFT_SUCCESS, station, removedRequest.Requester, copiedTable )
 		end
 	else
 		d("Bad craft remove")
 	end
-
 end
 
 
@@ -932,23 +1033,12 @@ end
 local function SmithingCraftCompleteFunction(station)
 	dbug("EVENT:CraftComplete")
 
-	--d("complete at "..GetTimeStamp())
-	--d(GetItemLink(BAG_BACKPACK, currentCraftAttempt.slot))
 	if currentCraftAttempt.type == "smithing" and hasNewItemBeenMade then
 		hasNewItemBeenMade = false
-		if WasItemCrafted() then
-			smithingCompleteNewItemHandler(station)
-		else
-
-			if backupPosition then
-				currentCraftAttempt.slot = backupPosition
-				if WasItemCrafted() then
-
-					smithingCompleteNewItemHandler(station)
-				else
-
-				end
-			end
+		local bag, slot = lib.findNextSlotIndex(WasItemCrafted)
+		while slot ~= nil do
+			smithingCompleteNewItemHandler(station, bag, slot)
+			bag, slot = lib.findNextSlotIndex(WasItemCrafted, slot+1)
 		end
 		currentCraftAttempt = {}
 		--sortCraftQueue()
@@ -961,22 +1051,23 @@ local function SmithingCraftCompleteFunction(station)
 			local addonName, position = removedRequest(station, currentCraftAttempt.timestamp)
 			if addonName then
 				returnTable =  table.remove(craftingQueue[addonName][station],position)
-
+				returnTable.bag=returnTable.ItemBagID
+				returnTable.slot=returnTable.ItemSlotID
 				returnTable.bag = BAG_BACKPACK
 				if returnTable.dualEnchantingSmithing then
-					returnTable.equipBag = BAG_BACKPACK
-					returnTable.equipSlot = currentCraftAttempt.slot
-					returnTable.equipCreated = true
-					returnTable['equipUniqueId'] = GetItemUniqueId(returnTable.equipBag,returnTable.equipSlot)
-					returnTable['equipStringUniqueId'] = Id64ToString(returnTable['equipUniqueId'])
+					-- don't need to re-add to equipInfo table bc it should already be there
 					currentCraftAttempt = {}
-					if returnTable.glyphCreated then
+
+					if returnTable.glyphInfo and #returnTable.glyphInfo>0 then
 						lib.applyGlyphToItem(returnTable)
 					else
-						lib:SetItemStatusNew(returnTable.equipSlot)
-						lib.SendCraftEvent( LLC_INITIAL_CRAFT_SUCCESS,  station,returnTable.Requester, returnTable )
-						return
+						lib:SetItemStatusNew(returnTable.ItemSlotID)
+						local copiedTable = lib.tableShallowCopy(returnTable)
+						copiedTable.slot = slot
+						copiedTable.smithingQuantity = 1
+						lib.SendCraftEvent( LLC_INITIAL_CRAFT_SUCCESS,  station,copiedTable.Requester, copiedTable )
 					end
+					return
 				end
 				lib.SendCraftEvent( LLC_CRAFT_SUCCESS,  station,returnTable.Requester, returnTable )
 			else
@@ -1029,7 +1120,7 @@ local compileRequirements
 -- For brevity sake, sets are simply listed as 3 item IDs with the number of traits needed.
 -- The name of the set is then added in on initialization using the API.
 local setInfo =
-{ --{{Axe    , Robe  ,  6  = Bow   ,  7  = Neckla},trait_ct},
+{ --{{Axe    , Robe  ,  6  = Bow   ,  7  = Necklace},trait_ct},
 	{{43529  , 43549 , [6] = 43543 , [7] =  43561},0},  --  1 no set
 	{{46499  , 43805 , [6] = 46518 , [7] = 137683},2},  --  2 death's wind
 	{{47265  , 47279 , [6] = 47287 , [7] = 137685},2},  --  3 night's silence
@@ -1087,6 +1178,9 @@ local setInfo =
 	{{158546 , 158496, [6] = 158553, [7] =158358 },3,}, -- 55 Critical Riposte
 	{{158920 , 158870, [6] = 158927, [7] =158732 },3,}, -- 56 Unchained Aggressor
 	{{159294 , 159244, [6] = 159301, [7] =159106 },3,}, -- 57 Dauntless Combatant
+	{{161451 , 161401, [6] = 161458, [7] =161263 },3,}, -- 58 Stuhn's Favor
+	{{161825 , 161775, [6] = 161832, [7] =161637 },3,}, -- 491 Dragon's Appetite
+	{{163287 , 163237, [6] = 163294, [7] =163099 },3,}, -- 506 Spell Parasite
 }
 
 SetIndexes = {}
@@ -1235,7 +1329,7 @@ function compileRequirements(request, requirements)-- Ingot/style mat/trait mat/
 	if not requirements then
 		if request.dualEnchantingSmithing then
 			requirements = lib.craftInteractionTables[CRAFTING_TYPE_ENCHANTING]:materialRequirements( request,{})
-			if request.equipCreated then
+			if request.smithingQuantity == 0 then
 				return requirements
 			end
 		else
@@ -1654,7 +1748,8 @@ local function fillOutFromParticulars(level, isCP, quality,style, potencyId, ess
 	link = string.format("|H1:item:%d:%d:%d:%d:%d:%d:0:0:0:0:0:0:0:0:0:%d:0:0:0:10000:0|h|h", itemId, cpQuality, lvl, enchantId, enchantCPQuality, enchantLvl,style) 
 	return link
 end
-local function getItemLinkFromParticulars(setId, trait, pattern, station,level, isCP, quality,style,  potencyId, essenceId , aspectId)
+
+local function internalGetItemLinkFromParticulars(setId, trait, pattern, station,level, isCP, quality,style,  potencyId, essenceId , aspectId)
 	local isLinkMatchFunction = mapItemType(station, pattern)
 	if not linkTable.id or linkTable.id ~= setId then
 		linkTable = {}
@@ -1671,6 +1766,16 @@ local function getItemLinkFromParticulars(setId, trait, pattern, station,level, 
 		end
 	end
 	return finalLink
+end
+
+local function getItemLinkFromParticulars(setId, trait, pattern, station,level, isCP, quality,style,  potencyId, essenceId , aspectId)
+	local wasError, result = pcall(function() return internalGetItemLinkFromParticulars(setId, trait, pattern, station,level, isCP, quality,style,  potencyId, essenceId , aspectId) end )
+	if wasError then
+		return result
+	else
+		return nil
+	end
+	
 end
 lib.functionTable.getItemLinkFromParticulars = getItemLinkFromParticulars
 lib.getItemLinkFromParticulars = getItemLinkFromParticulars
@@ -1695,9 +1800,7 @@ lib.craftInteractionTables[CRAFTING_TYPE_BLACKSMITHING] =
 			return true
 		end
 
-
 		if canCraftItemHere(station, request["setIndex"]) and canCraftItem(request) and enoughMaterials(request) then
-
 			return true
 		else
 			return false

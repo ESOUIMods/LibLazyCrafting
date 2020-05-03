@@ -15,7 +15,7 @@ local lib = _G["lib_global"]
 local sortCraftQueue = lib.sortCraftQueue
 
 local widgetType = 'enchanting'
-local widgetVersion = 1.7
+local widgetVersion = 1.8
 if not lib:RegisterWidget(widgetType, widgetVersion) then return false end
 
 local function dbug(...)
@@ -49,13 +49,12 @@ local function copy(t)
 	end
 	return a
 end
-
 -----------------------------------------------------
 -- ENCHANTING USER INTERACTION FUNCTIONS
 
 -- Since bag indexes can change, this ignores those. Instead, it takes in the name, or the index (table of indexes is found in table above, and is specific to this library)
 -- Bag indexes will be determined at time of crafting	
-local function LLC_CraftEnchantingGlyphItemID(self, potencyItemID, essenceItemID, aspectItemID, autocraft, reference, gearRequestTable)
+local function LLC_CraftEnchantingGlyphItemID(self, potencyItemID, essenceItemID, aspectItemID, autocraft, reference, gearRequestTable, quantity)
 	dbug('FUNCTION:LLCEnchantCraft')
 	if reference == nil then reference = "" end
 	if not self then d("Please call with colon notation") end
@@ -66,14 +65,17 @@ local function LLC_CraftEnchantingGlyphItemID(self, potencyItemID, essenceItemID
 	if gearRequestTable then
 		requestTable['dualEnchantingSmithing'] = true
 	end
-	
+	requestTable['glyphInfo'] = requestTable.glyphInfo or {}
+	requestTable['equipInfo'] = requestTable.equipInfo or {}
 	requestTable["potencyItemID"] = potencyItemID
 	requestTable["essenceItemID"] = essenceItemID
 	requestTable["aspectItemID"] = aspectItemID
-	requestTable["timestamp"] = requestTable["timestamp"] or GetTimeStamp()
+	requestTable["timestamp"] = requestTable["timestamp"] or lib.GetNextQueueOrder()
 	requestTable["autocraft"] = autocraft
 	requestTable["Requester"] = self.addonName
 	requestTable["reference"] = requestTable["reference"] or reference
+	requestTable["quantity"] = quantity or 1
+	requestTable["initialQuantity"] = quantity or 1
 	if requestTable["station"] then
 		requestTable["enchantingStation"] = requestTable["station"]
 	else
@@ -88,7 +90,7 @@ local function LLC_CraftEnchantingGlyphItemID(self, potencyItemID, essenceItemID
 	end
 	return requestTable
 end
-
+--/script LLC_Global:CraftEnchantingItemId(45830, 45838, 45851, true, "Hum", nil, 2)
 local function LLC_CraftEnchantingGlyph(self, potencyBagId, potencySlot, essenceBagId, essenceSlot, aspectBagId, aspectSlot, autocraft, reference, gearRequestTable)
 	return LLC_CraftEnchantingGlyphItemID(self, GetItemId(potencyBagId, potencySlot),GetItemId(essenceBagId, essenceSlot),GetItemId(aspectBagId,aspectSlot),autocraft, reference, gearRequestTable)
 end
@@ -258,9 +260,9 @@ local function LLC_CraftEnchantingGlyphAttributes(self, isCP, level, enchantId, 
 		end
 	end
 	local aspectId = qualityItemIdInfo[quality]
-	local a = LLC_CraftEnchantingGlyphItemID(self, potencyId, essenceId, aspectId, autocraft, reference, gearRequestTable)
+	local a = LLC_CraftEnchantingGlyphItemID(self, potencyId, essenceId, aspectId, autocraft, reference, gearRequestTable, gearRequestTable.smithingQuantity)
 	return a
-	-- LLC_CraftEnchantingGlyphItemID(self, GetItemId(potencyBagId, potencySlot),GetItemId(essenceBagId, essenceSlot),GetItemId(aspectBagId,aspectSlot),autocraft, reference)
+	-- LLC_Global:CraftEnchantingGlyphItemID(self, GetItemId(potencyBagId, potencySlot),GetItemId(essenceBagId, essenceSlot),GetItemId(aspectBagId,aspectSlot),autocraft, reference)
 end
 
 lib.functionTable.CraftEnchantingGlyphByAttributes = LLC_CraftEnchantingGlyphAttributes
@@ -307,7 +309,7 @@ local currentCraftAttempt =
 }
 local lastSlotUsed = nil
 
-local function LLC_EnchantingCraftinteraction(station, earliest, addon , position)
+local function LLC_EnchantingCraftinteraction(station, earliest, addon, position)
 	dbug("FUNCTION:LLCEnchantCraft")
 	if not earliest then  lib.SendCraftEvent( LLC_NO_FURTHER_CRAFT_POSSIBLE,  station) end
 	if earliest and not IsPerformingCraftProcess() then
@@ -319,18 +321,21 @@ local function LLC_EnchantingCraftinteraction(station, earliest, addon , positio
 		select(2,findItemLocationById(earliest["essenceItemID"])),
 		select(1,findItemLocationById(earliest["aspectItemID"])),
 		select(2,findItemLocationById(earliest["aspectItemID"])),
-		1
+		earliest["quantity"]
 		}
-		if locations[1]  and locations[3] and locations[5] then
+		local maxCraftable = math.min(earliest["quantity"] or 1, GetMaxIterationsPossibleForEnchantingItem(unpack(locations)))
+		locations[7] = maxCraftable
+		if locations[1]  and locations[3] and locations[5] and maxCraftable>0 then
 			dbug("CALL:ZOEnchantCraft")
 			lib.isCurrentlyCrafting = {true, "enchanting", earliest["Requester"]}
+			lib:setWatchingForNewItems(true)
 			CraftEnchantingItem(unpack(locations))
 			currentCraftAttempt= copy(earliest)
 			currentCraftAttempt.callback = lib.craftResultFunctions[addon]
 			currentCraftAttempt.slot = FindFirstEmptySlotInBag(BAG_BACKPACK)
 			currentCraftAttempt.link = GetEnchantingResultingItemLink(unpack(locations))
 			currentCraftAttempt.position = position
-			currentCraftAttempt.timestamp = GetTimeStamp()
+			currentCraftAttempt.timestamp = earliest.timestamp
 			currentCraftAttempt.addon = addon
 			if currentCraftAttempt.link=="" then
 				-- User doesn't know all the runes. Boooo more work
@@ -375,81 +380,122 @@ local function applyGlyphToItem(requestTable)
 	-- if not glyphUniqueId == requestTable.glyphUniqueId and not equipUniqueId == requestTable.equipUniqueId then
 	-- 	d("Enchanting failed. Gear and glyph were moved")
 	-- end
-	local equipBag , equipSlot = searchUniqueId(requestTable.equipUniqueId)
-	local glyphBag, glyphSlot = searchUniqueId(requestTable.glyphUniqueId)
-	if not equipBag or not glyphBag then
-		if not equipBag then
-			d("LibLazyCrafting: Could not find crafted gear")
-		end
-		if not glyphBag then
-			d("LibLazyCrafting: Could not find crafted glyph")
-		end
-		d("LibLazyCrafting: Aborting enchanting")
-		lib.SendCraftEvent(LLC_ENCHANTMENT_FAILED, 0, requestTable.Requester, requestTable )
-		return
-	end
-	lastSlotUsed = glyphSlot
-	EnchantItem(equipBag, equipSlot, glyphBag , glyphSlot)
-	-- Set the new gear as new
-	_,equipSlot = searchUniqueId(requestTable.equipUniqueId)
-	zo_callLater( function() lib:SetItemStatusNew(equipSlot) end, 500 )
-	-- local resultTable = 
-	-- {
-	-- 	["bag"] = BAG_BACKPACK,
-	-- 	["slot"] = currentCraftAttempt.slot,
-	-- 	['link'] = currentCraftAttempt.link,
-	-- 	['uniqueId'] = GetItemUniqueId(BAG_BACKPACK, currentCraftAttempt.slot),
-	-- 	["quantity"] = 1,
-	-- 	["reference"] = removedTable.reference,
-	-- }
+	local glyphInfo = requestTable.glyphInfo
+	local equipInfo = requestTable.equipInfo
+	local numLoops = math.min(#glyphInfo, #equipInfo)
+	for i = numLoops,1, -1 do
 
-	lib.SendCraftEvent(LLC_CRAFT_SUCCESS, 0, requestTable.Requester, requestTable )
-	currentCraftAttempt = {}
+		local equipBag , equipSlot = searchUniqueId(equipInfo[i].uniqueId)
+		local glyphBag, glyphSlot = searchUniqueId(glyphInfo[i].uniqueId)
+		if not equipBag or not glyphBag then
+			if not equipBag then
+				d("LibLazyCrafting: Could not find crafted gear")
+			end
+			if not glyphBag then
+				d("LibLazyCrafting: Could not find crafted glyph")
+			end
+			d("LibLazyCrafting: Aborting enchanting")
+			lib.SendCraftEvent(LLC_ENCHANTMENT_FAILED, 0, requestTable.Requester, requestTable )
+			return
+		end
+		table.remove(glyphInfo)
+		local equipUniqueId = table.remove(equipInfo).uniqueId
+		-- Enchanting too many too fast will get you kicked!
+		zo_callLater(function()
+			EnchantItem(equipBag, equipSlot, glyphBag , glyphSlot)
+
+			
+			zo_callLater( function() 
+				local _,equipSlot = searchUniqueId(equipUniqueId)
+				lib:SetItemStatusNew(equipSlot) 
+			end, 550 )
+
+			lib.SendCraftEvent(LLC_CRAFT_SUCCESS, 0, requestTable.Requester, requestTable )
+		end, (numLoops-i+1)*260
+		
+		)
+		currentCraftAttempt = {}
+	end
 end
 
-
-local function LLC_EnchantingCraftingComplete(event, station, lastCheck)
-	if currentCraftAttempt.allRunesKnown==false then -- User didn't know all the glyphs, so we get the item link *now* since they know all of them.
-	-- Hopefully they have more than one
-		currentCraftAttempt.link = GetEnchantingResultingItemLink(unpack(currentCraftAttempt.locations))
-	end
-	dbug("EVENT:CraftComplete")
-	if not currentCraftAttempt.addon then return end
-	if GetItemLinkName(GetItemLink(BAG_BACKPACK, currentCraftAttempt.slot,0)) == GetItemLinkName(currentCraftAttempt.link)
-		and GetItemLinkQuality(GetItemLink(BAG_BACKPACK, currentCraftAttempt.slot,0)) == GetItemLinkQuality(currentCraftAttempt.link)
-	then
-		-- We found it!
+local function wasItemMade(bag, slot)
+	return  GetItemLinkName(GetItemLink(BAG_BACKPACK, slot,0)) == GetItemLinkName(currentCraftAttempt.link)
+		and GetItemLinkQuality(GetItemLink(BAG_BACKPACK, slot,0)) == GetItemLinkQuality(currentCraftAttempt.link)
+end
+local function handleEnchantComplete(event, station, slot)
+			-- We found it!
 		dbug("ACTION:RemoveQueueItem")
-		local removedTable = table.remove(craftingQueue[currentCraftAttempt.addon][CRAFTING_TYPE_ENCHANTING] , currentCraftAttempt.position )
+		local removedTable = craftingQueue[currentCraftAttempt.Requester][CRAFTING_TYPE_ENCHANTING][currentCraftAttempt.position]
+		if (currentCraftAttempt.quantity or 1) <= 1 then
+			removedTable = table.remove(craftingQueue[currentCraftAttempt.Requester][CRAFTING_TYPE_ENCHANTING] , currentCraftAttempt.position )
+			removedTable.quantity = removedTable.quantity - 1
+			currentCraftAttempt.quantity = currentCraftAttempt.quantity - 1
+		else
+			removedTable =  craftingQueue[currentCraftAttempt.Requester][CRAFTING_TYPE_ENCHANTING][currentCraftAttempt.position]
+			removedTable.quantity = removedTable.quantity - 1
+			currentCraftAttempt.quantity = currentCraftAttempt.quantity - 1
+		end
+		-- d(removedTable)
 		if removedTable.dualEnchantingSmithing then
+			removedTable.glyphInfo= removedTable.glyphInfo or {}
+			table.insert(removedTable.glyphInfo,
+			{
+				bag=BAG_BACKPACK,
+				slot=slot,
+				uniqueId=GetItemUniqueId(BAG_BACKPACK, slot),
+				uniqueIdString = Id64ToString(GetItemUniqueId(BAG_BACKPACK, slot)),
+			})
 			removedTable.glyphBag = BAG_BACKPACK
-			removedTable.glyphSlot = currentCraftAttempt.slot
+			removedTable.glyphSlot = slot
 			removedTable['glyphUniqueId'] = GetItemUniqueId(removedTable.glyphBag, removedTable.glyphSlot)
 			removedTable['glyphStringUniqueId'] = Id64ToString(removedTable['glyphUniqueId'])
-			removedTable.glyphCreated = true
-			currentCraftAttempt = {}
-			if removedTable.equipCreated then
-				applyGlyphToItem(removedTable)
-				return
-			else
-				lib.SendCraftEvent( LLC_INITIAL_CRAFT_SUCCESS,  station,removedTable.Requester, removedTable )
-				return
-			end
+			return removedTable
 		end
 		--sortCraftQueue()
 		local resultTable = 
 		{
 			["bag"] = BAG_BACKPACK,
-			["slot"] = currentCraftAttempt.slot,
+			["slot"] = slot,
 			['link'] = currentCraftAttempt.link,
 			['uniqueId'] = GetItemUniqueId(BAG_BACKPACK, currentCraftAttempt.slot),
-			["quantity"] = 1,
+			["quantity"] = removedTable.quantity,
 			["reference"] = removedTable.reference,
 		}
 		lib.SendCraftEvent( LLC_CRAFT_SUCCESS ,  station, removedTable.Requester , resultTable )
-		currentCraftAttempt = {}
+		return removedTable
+end
 
-	elseif lastCheck then
+local function LLC_EnchantingCraftingComplete(event, station, lastCheck)
+	if currentCraftAttempt.allRunesKnown==false then -- User didn't know all the glyphs, so we get the item link *now* since now they know them
+	-- Hopefully they have more than one
+		currentCraftAttempt.link = GetEnchantingResultingItemLink(unpack(currentCraftAttempt.locations))
+	end
+	dbug("EVENT:CraftComplete")
+	if not currentCraftAttempt.addon then return end
+	local bag, slot = lib.findNextSlotIndex(wasItemMade)
+	local found = false
+	local removedTable
+	while slot ~= nil do
+		removedTable = handleEnchantComplete(event, station, slot)
+		bag, slot = lib.findNextSlotIndex(wasItemMade, slot+1)
+		found = true
+	end
+	if found then
+		if removedTable.equipInfo and #removedTable.equipInfo>0 then
+			applyGlyphToItem(removedTable)
+			return
+		else
+			local copiedTable = lib.tableShallowCopy(removedTable)
+			copiedTable.slot = slot
+			copiedTable.quantity = 1
+			lib.SendCraftEvent(LLC_INITIAL_CRAFT_SUCCESS, station, removedTable.Requester, copiedTable)
+			return
+		end
+		currentCraftAttempt = {}
+		return
+	end
+
+	if lastCheck then
 		-- give up on finding it.
 		currentCraftAttempt = {}
 	elseif lastSlotUsed then
@@ -501,9 +547,9 @@ local function compileGlyphRequirements(self, requestTable, requirements)
 			requirements = {}
 		end
 	end
-	requirements[requestTable["potencyItemID"]] = 1
-	requirements[requestTable["essenceItemID"]] = 1
-	requirements[requestTable["aspectItemID"]] = 1
+	requirements[requestTable["potencyItemID"]] =1 *requestTable.quantity
+	requirements[requestTable["essenceItemID"]] =1 *requestTable.quantity
+	requirements[requestTable["aspectItemID"]] =1 *requestTable.quantity
 	return requirements
 end
 
