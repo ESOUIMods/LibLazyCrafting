@@ -260,7 +260,7 @@ function enoughMaterials(craftRequestTable)
 	}
 	local missingSomething = false
 	local smithingQuantity = 1
-	smithingQuantity = craftRequestTable.smithingQuantity
+	smithingQuantity = craftRequestTable.smithingQuantity or 1
 	if craftRequestTable["style"] 
 		and craftRequestTable['station']~= CRAFTING_TYPE_JEWELRYCRAFTING and not craftRequestTable["useUniversalStyleItem"] then
 		if craftRequestTable["style"]==LLC_FREE_STYLE_CHOICE then
