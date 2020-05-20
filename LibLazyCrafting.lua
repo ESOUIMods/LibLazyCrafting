@@ -16,7 +16,7 @@ local function dbug(...)
 end
 
 -- Initialize libraries
-local libName, libVersion = "LibLazyCrafting", 2995
+local libName, libVersion = "LibLazyCrafting", 2999
 local libLoaded
 local lib, oldminor
 if(not LibStub) then
@@ -37,7 +37,7 @@ LLC_SHORT.name, LLC_SHORT.version = libName, libVersion
 
 LLC_SHORT.debugDisplayNames = {}
 
-lib.craftInteractionTables = lib.craftInteractionTables or 
+lib.craftInteractionTables = lib.craftInteractionTables or
 {
 	["example"] =
 	{
@@ -99,7 +99,7 @@ local qualityIndexes =
 -- Thus, all that's needed to find the oldest request is cycle through each addon, and check only their first request.
 -- Unless a user has hundreds of addons using this library (unlikely) it shouldn't be a big strain. (shouldn't anyway)
 -- Not sure how to handle multiple stations for furniture. needs more research for that.
-craftingQueue = craftingQueue or 
+craftingQueue = craftingQueue or
 {
 	--["GenericTesting"] = {}, -- This is for say, calling from chat.
 	["ExampleAddon"] = -- This contains examples of all the crafting requests. It is removed upon initialization. Most values are random/default.
@@ -217,7 +217,7 @@ function findItemLocationById(itemID)
 			return BAG_BACKPACK,i
 		end
 	end
-	
+
 	if GetItemId(BAG_VIRTUAL, itemID) ~=0 then
 
 		return BAG_VIRTUAL, itemID
@@ -317,7 +317,7 @@ function lib.stackableCraftingComplete(event, station, lastCheck, craftingType, 
 	end
 end
 
-lib.newItemsSeen = 
+lib.newItemsSeen =
 {
 
 }
@@ -629,7 +629,7 @@ function lib:Init()
 		return lib.addonInteractionTables[addonName]
 	end
 
-	
+
 	-- Response codes
 	LLC_CRAFT_SUCCESS = "success" -- extra result: Position of item, item link, maybe other stuff?
 	LLC_ITEM_TO_IMPROVE_NOT_FOUND = "item not found" -- extra result: Improvement request table
@@ -658,7 +658,7 @@ function lib:SetItemStatusNew(itemSlot)
 	-- d(itemSlot)
 	-- PLAYER_INVENTORY:RefreshInventorySlot(1, itemSlot, BAG_BACKPACK)
 	local v = PLAYER_INVENTORY:GetBackpackItem(itemSlot)
-	
+
 	if v then
 		v.brandNew = true
 		v.age = 1
@@ -677,7 +677,7 @@ local function LLCThrowError(addonNameOrTableOrAlwaysThrow, message)
 	if type(addonNameOrTable)=="table" then
 		addonName = addonNameOrTable.addonName
 		if not addonName then
-			return 
+			return
 		end
 	else
 		addonName = addonNameOrTable
