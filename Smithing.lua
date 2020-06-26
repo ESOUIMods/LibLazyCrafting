@@ -18,7 +18,7 @@
 local lib = _G["lib_global"]
 
 local widgetType = 'smithing'
-local widgetVersion = 2.96
+local widgetVersion = 2.97
 if not lib:RegisterWidget(widgetType, widgetVersion) then return  end
 
 local LLC_SHORT = lib
@@ -649,7 +649,7 @@ local function LLC_CraftSmithingItem(self, patternIndex, materialIndex, material
     requestTable["reference"] = reference
     requestTable["smithingQuantity"] = smithingQuantity or 1
     requestTable["initialQuantity"] = quantity
-    if setIndex == 470 and station == CRAFTING_TYPE_JEWELRYCRAFTING then -- New Moon Acolyte pattern indexes are swapped for jewelry!
+    if GetSetIndexes()[setIndex] and GetSetIndexes()[setIndex].isSwapped and station == CRAFTING_TYPE_JEWELRYCRAFTING then -- New Moon Acolyte pattern indexes are swapped for jewelry!
         if requestTable.pattern == 1 then
             requestTable.pattern = 2
         else
@@ -835,6 +835,9 @@ local function LLC_SmithingCraftInteraction( station, earliest, addon , position
                 parameters[1] = parameters[1] + setPatternOffset[station]
             end
             parameters[7] = math.min(earliest.smithingQuantity or 1,  GetMaxIterationsPossibleForSmithingItem(unpack(parameters)))
+            if earliest.smithingQuantity > GetMaxIterationsPossibleForSmithingItem(unpack(parameters)) then
+                d("Mismatch asked quantity: "..earliest.smithingQuantity.." actual max "..GetMaxIterationsPossibleForSmithingItem(unpack(parameters)))
+            end
             if parameters[7] == 0 then
                 return
             end
@@ -1177,11 +1180,11 @@ local setInfo =
     {{148688 , 148708, [6] = 148695, [7] =148724 },3,}, -- 51 Vasterie's Tutelage
     {{155778 , 155798, [6] = 155785, [7] =155813 },8,}, -- 52 Ancient Dragonguard
     {{155404 , 155424, [6] = 155411, [7] =155439 },5,}, -- 53 Daring Corsair
-    {{156152 , 156172, [6] = 156159, [7] =156187 },3,}, -- 54 New Moon Acolyte -- Note, set ring and neck are swapped. neck ID is 156188
+    {{156152 , 156172, [6] = 156159, [7] =156187 },3,isSwapped=true},   -- 54 New Moon Acolyte -- Note, set ring and neck are swapped. neck ID is 156188
     {{158546 , 158496, [6] = 158553, [7] =158358 },3,}, -- 55 Critical Riposte
     {{158920 , 158870, [6] = 158927, [7] =158732 },3,}, -- 56 Unchained Aggressor
     {{159294 , 159244, [6] = 159301, [7] =159106 },3,}, -- 57 Dauntless Combatant
-    {{161451 , 161401, [6] = 161458, [7] =161263 },3,}, -- 58 Stuhn's Favor
+    {{161451 , 161401, [6] = 161458, [7] =161263 },3,isSwapped=true}, -- 58 Stuhn's Favor
     {{161825 , 161775, [6] = 161832, [7] =161637 },3,}, -- 491 Dragon's Appetite
     {{163287 , 163237, [6] = 163294, [7] =163099 },3,}, -- 506 Spell Parasite
 }

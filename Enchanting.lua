@@ -355,13 +355,13 @@ local function LLC_EnchantingCraftinteraction(station, earliest, addon, position
     if earliest and not IsPerformingCraftProcess() then
         local locations =
         {
-        select(1,findItemLocationById(earliest["potencyItemID"])),
-        select(2,findItemLocationById(earliest["potencyItemID"])),
-        select(1,findItemLocationById(earliest["essenceItemID"])),
-        select(2,findItemLocationById(earliest["essenceItemID"])),
-        select(1,findItemLocationById(earliest["aspectItemID"])),
-        select(2,findItemLocationById(earliest["aspectItemID"])),
-        earliest["quantity"]
+            select(1,findItemLocationById(earliest["potencyItemID"])),
+            select(2,findItemLocationById(earliest["potencyItemID"])),
+            select(1,findItemLocationById(earliest["essenceItemID"])),
+            select(2,findItemLocationById(earliest["essenceItemID"])),
+            select(1,findItemLocationById(earliest["aspectItemID"])),
+            select(2,findItemLocationById(earliest["aspectItemID"])),
+            earliest["quantity"]
         }
         local maxCraftable = math.min(earliest["quantity"] or 1, GetMaxIterationsPossibleForEnchantingItem(unpack(locations)))
         locations[7] = maxCraftable
