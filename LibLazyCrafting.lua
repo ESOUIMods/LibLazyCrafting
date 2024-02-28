@@ -17,15 +17,8 @@ end
 
 -- Initialize libraries
 local libLoaded
-local LIB_NAME, VERSION = "LibLazyCrafting", 4.004
-local LibLazyCrafting, oldminor
-if LibStub then
-	LibLazyCrafting, oldminor = LibStub:NewLibrary(LIB_NAME, VERSION)
-else
-	LibLazyCrafting, oldminor = {} , VERSION
-end
-if not LibLazyCrafting then return end
-
+local LIB_NAME, VERSION = "LibLazyCrafting", 4005
+local LibLazyCrafting, oldminor = {} , VERSION
 _G["LibLazyCrafting"] = LibLazyCrafting
 
 local LLC = LibLazyCrafting -- Short form version we can use if needed
@@ -662,7 +655,6 @@ function LibLazyCrafting:Init()
 		LLCAddonInteractionTable.autocraft = autocraft
 
 		-- Give add-on authors a way to check for required version beyond
-		-- "I hope LibStub returns what I asked for!"
 		LLCAddonInteractionTable["version"] = VERSION
 
 		LibLazyCrafting.addonInteractionTables[addonName] =  LLCAddonInteractionTable
